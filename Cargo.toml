@@ -21,6 +21,7 @@ resolver = "2"
 exclude = [
   "termwiz/codegen",
   "wezterm-char-props/codegen",
+  "libvt",
 ]
 
 [profile.release]

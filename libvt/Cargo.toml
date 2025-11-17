@@ -1,0 +1,30 @@
+[package]
+name = "libvt"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance terminal emulation library"
+license = "MIT"
+repository = "https://github.com/wez/wezterm"
+keywords = ["terminal", "emulator", "vt100", "xterm"]
+categories = ["command-line-interface", "parser-implementations"]
+
+[features]
+default = ["sixel", "iterm2", "kitty"]
+sixel = []
+iterm2 = []
+kitty = []
+wasm = []
+
+[dependencies]
+thiserror = "1.0"
+unicode-width = "0.1"
+log = "0.4"
+bitflags = "2.4"
+
+[dev-dependencies]
+proptest = "1.4"
+
+# Benchmarks disabled until implementation is complete
+# [[bench]]
+# name = "parsing"
+# harness = false
