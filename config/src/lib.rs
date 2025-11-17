@@ -26,6 +26,7 @@ mod cell;
 mod color;
 mod config;
 mod daemon;
+pub mod defaults;
 mod exec_domain;
 mod font;
 mod frontend;
