@@ -8,9 +8,10 @@ pub struct Parser {
 }
 
 /// Parser state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum ParserState {
     /// Normal text processing
+    #[default]
     Ground,
     /// Escape sequence started (received ESC)
     Escape,
@@ -32,12 +33,6 @@ enum ParserState {
     PmString,
     /// SOS sequence (ESC X)
     SosString,
-}
-
-impl Default for ParserState {
-    fn default() -> Self {
-        Self::Ground
-    }
 }
 
 /// Parser action result
@@ -107,21 +102,15 @@ impl Parser {
                 self.buffer.clear();
                 None
             }
-            // C0 control characters (excluding ESC which is handled above)
-            0x00..=0x1A | 0x1C..=0x1F => Some(Action::Control(byte)),
-            // DEL
-            0x7F => Some(Action::Control(byte)),
+            // C0 control characters (excluding ESC which is handled above) and DEL
+            0x00..=0x1A | 0x1C..=0x1F | 0x7F => Some(Action::Control(byte)),
             // Printable ASCII
             0x20..=0x7E => Some(Action::Print(byte as char)),
             // UTF-8 start bytes and continuation bytes
             0x80..=0xFF => {
                 // Simple UTF-8 handling - just treat as printable for now
                 // A full implementation would properly decode UTF-8 sequences
-                if let Some(c) = char::from_u32(byte as u32) {
-                    Some(Action::Print(c))
-                } else {
-                    None
-                }
+                char::from_u32(u32::from(byte)).map(Action::Print)
             }
         }
     }
@@ -322,13 +311,8 @@ impl Parser {
                 self.state = ParserState::DcsPassthrough;
                 None
             }
-            // Parameter bytes
-            0x30..=0x3F => {
-                self.buffer.push(byte);
-                None
-            }
-            // Intermediate bytes
-            0x20..=0x2F => {
+            // Parameter and intermediate bytes
+            0x20..=0x3F => {
                 self.buffer.push(byte);
                 None
             }

@@ -12,20 +12,15 @@ use crate::{
 use std::collections::VecDeque;
 
 /// Unicode version for width calculation
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum UnicodeVersion {
     /// Unicode 9.0
     Nine,
     /// Unicode 14.0
     Fourteen,
     /// Unicode 15.0
+    #[default]
     Fifteen,
-}
-
-impl Default for UnicodeVersion {
-    fn default() -> Self {
-        Self::Fifteen
-    }
 }
 
 /// Terminal configuration
@@ -68,6 +63,26 @@ impl Default for TerminalConfig {
 }
 
 /// Main terminal emulator
+///
+/// The `Terminal` struct is the core of libvt, managing the complete state
+/// of a terminal emulation session including the screen buffer, scrollback,
+/// cursor position, and escape sequence parsing.
+///
+/// # Examples
+///
+/// ```rust
+/// use libvt::{Terminal, TerminalConfig};
+///
+/// // Create an 80x24 terminal
+/// let mut term = Terminal::new(80, 24, TerminalConfig::default());
+///
+/// // Write text with ANSI escape sequences
+/// term.write(b"\x1b[1;31mRed Bold Text\x1b[0m\r\n");
+///
+/// // Check cursor position
+/// let (col, row) = term.cursor_position();
+/// assert_eq!(row, 1);
+/// ```
 pub struct Terminal {
     /// Terminal dimensions
     cols: u16,
@@ -138,7 +153,33 @@ impl Terminal {
     /// Write data to the terminal
     ///
     /// This processes the input through the escape sequence parser
-    /// and updates terminal state accordingly.
+    /// and updates terminal state accordingly. Supports standard
+    /// VT100/VT220/xterm escape sequences.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Raw bytes to write (can include escape sequences)
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes processed
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use libvt::create_terminal;
+    ///
+    /// let mut term = create_terminal(80, 24);
+    ///
+    /// // Write plain text
+    /// term.write(b"Hello");
+    ///
+    /// // Write with escape sequences
+    /// term.write(b"\x1b[1;32mGreen\x1b[0m");
+    ///
+    /// // Position cursor and write
+    /// term.write(b"\x1b[5;10HAt position");
+    /// ```
     pub fn write(&mut self, data: &[u8]) -> usize {
         let actions = self.parser.parse(data);
 
@@ -287,9 +328,9 @@ impl Terminal {
 
     /// Get selected text
     pub fn selected_text(&self) -> Option<String> {
-        self.selection.as_ref().map(|sel| {
-            self.screen.get_text_in_range(sel.start, sel.end)
-        })
+        self.selection
+            .as_ref()
+            .map(|sel| self.screen.get_text_in_range(sel.start, sel.end))
     }
 
     /// Get terminal configuration
@@ -358,7 +399,7 @@ impl Terminal {
                 let tab_stop = ((self.cursor.col / 8) + 1) * 8;
                 self.cursor.col = tab_stop.min(self.cols - 1);
             }
-            0x0A | 0x0B | 0x0C => {
+            0x0A..=0x0C => {
                 // Line feed, vertical tab, form feed
                 self.cursor.row += 1;
                 if self.cursor.row >= self.rows {
@@ -398,9 +439,7 @@ impl Terminal {
                 "7" => {
                     // Set working directory
                     self.working_directory = Some(parts[1].to_string());
-                    self.emit_event(TerminalEvent::WorkingDirectoryChanged(
-                        parts[1].to_string(),
-                    ));
+                    self.emit_event(TerminalEvent::WorkingDirectoryChanged(parts[1].to_string()));
                 }
                 _ => {}
             }

@@ -275,7 +275,10 @@ mod tests {
         let event = MouseEvent::press(10, 20, MouseButton::Left, KeyModifiers::empty());
         assert_eq!(event.col, 10);
         assert_eq!(event.row, 20);
-        assert!(matches!(event.kind, MouseEventKind::Press(MouseButton::Left)));
+        assert!(matches!(
+            event.kind,
+            MouseEventKind::Press(MouseButton::Left)
+        ));
     }
 
     #[test]

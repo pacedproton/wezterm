@@ -1,6 +1,7 @@
 //! Screen buffer management
 
 use crate::cell::Cell;
+use std::fmt;
 
 /// A single line of terminal cells
 #[derive(Debug, Clone)]
@@ -91,22 +92,26 @@ impl Line {
         self.wrapped = false;
     }
 
-    /// Convert line to string
-    pub fn to_string(&self) -> String {
-        self.cells.iter().map(|c| c.text()).collect()
-    }
-
     /// Get text in range
     pub fn get_text_range(&self, start: usize, end: usize) -> String {
         self.cells[start.min(self.cells.len())..end.min(self.cells.len())]
             .iter()
-            .map(|c| c.text())
+            .map(super::cell::Cell::text)
             .collect()
     }
 
     /// Check if line has any hyperlinks
     pub fn has_hyperlinks(&self) -> bool {
         self.cells.iter().any(|c| c.hyperlink().is_some())
+    }
+}
+
+impl fmt::Display for Line {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for cell in &self.cells {
+            write!(f, "{}", cell.text())?;
+        }
+        Ok(())
     }
 }
 
@@ -269,8 +274,7 @@ impl Screen {
         let mut result = String::new();
 
         // Normalize so start < end
-        let (start, end) = if start.row < end.row
-            || (start.row == end.row && start.col <= end.col)
+        let (start, end) = if start.row < end.row || (start.row == end.row && start.col <= end.col)
         {
             (start, end)
         } else {

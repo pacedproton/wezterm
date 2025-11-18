@@ -73,6 +73,7 @@ impl Cell {
     }
 
     /// Get the width of this cell (1 for normal, 2 for wide)
+    #[allow(clippy::cast_possible_truncation)]
     pub fn width(&self) -> u8 {
         unicode_width::UnicodeWidthStr::width(self.text.as_str()) as u8
     }
@@ -92,6 +93,7 @@ impl Default for Cell {
 }
 
 /// Cell attributes (colors, styles)
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellAttributes {
     /// Foreground color

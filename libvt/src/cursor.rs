@@ -3,9 +3,10 @@
 use crate::cell::CellAttributes;
 
 /// Cursor shape
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
     /// Block cursor (default)
+    #[default]
     Block,
     /// Underline cursor
     Underline,
@@ -15,25 +16,14 @@ pub enum CursorShape {
     Hidden,
 }
 
-impl Default for CursorShape {
-    fn default() -> Self {
-        Self::Block
-    }
-}
-
 /// Cursor visibility
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorVisibility {
     /// Cursor is visible
+    #[default]
     Visible,
     /// Cursor is hidden
     Hidden,
-}
-
-impl Default for CursorVisibility {
-    fn default() -> Self {
-        Self::Visible
-    }
 }
 
 /// Cursor state

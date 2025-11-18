@@ -1,7 +1,7 @@
-//! LibVT - High-Performance Terminal Emulation Library
+//! `LibVT` - High-Performance Terminal Emulation Library
 //!
-//! A standalone terminal emulation library extracted from WezTerm,
-//! designed for integration with VSCode, editors, and other applications.
+//! A standalone terminal emulation library extracted from `WezTerm`,
+//! designed for integration with `VSCode`, editors, and other applications.
 //!
 //! # Features
 //!
@@ -35,10 +35,23 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::cargo)]
+#![allow(clippy::module_name_repetitions)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::unused_self)]
+#![allow(clippy::needless_pass_by_value)]
+#![allow(clippy::struct_excessive_bools)]
+#![deny(unsafe_code)]
 
 pub mod cell;
 pub mod color;
 pub mod cursor;
+pub mod error;
 pub mod events;
 pub mod input;
 pub mod parser;
@@ -48,9 +61,10 @@ pub mod terminal;
 pub use cell::{Cell, CellAttributes, Hyperlink, UnderlineStyle};
 pub use color::{ColorPalette, ColorSpec, RgbColor};
 pub use cursor::{Cursor, CursorShape, CursorVisibility};
+pub use error::{Error, Result};
 pub use events::{ClipboardType, EventSubscriber, TerminalEvent, TerminalMode};
 pub use input::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-pub use screen::{Line, Screen, Selection, Position};
+pub use screen::{Line, Position, Screen, Selection};
 pub use terminal::{Terminal, TerminalConfig, UnicodeVersion};
 
 /// Library version

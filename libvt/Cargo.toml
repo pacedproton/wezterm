@@ -5,6 +5,7 @@ edition = "2021"
 description = "High-performance terminal emulation library"
 license = "MIT"
 repository = "https://github.com/wez/wezterm"
+readme = "README.md"
 keywords = ["terminal", "emulator", "vt100", "xterm"]
 categories = ["command-line-interface", "parser-implementations"]
 

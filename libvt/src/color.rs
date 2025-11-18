@@ -18,8 +18,8 @@ impl ColorSpec {
     pub fn to_css(&self) -> String {
         match self {
             ColorSpec::Default => "inherit".to_string(),
-            ColorSpec::Ansi(idx) => format!("var(--ansi-{})", idx),
-            ColorSpec::Palette(idx) => format!("var(--palette-{})", idx),
+            ColorSpec::Ansi(idx) => format!("var(--ansi-{idx})"),
+            ColorSpec::Palette(idx) => format!("var(--palette-{idx})"),
             ColorSpec::Rgb(rgb) => rgb.to_css(),
         }
     }
@@ -61,12 +61,12 @@ impl RgbColor {
         format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
     }
 
-    /// Convert to CSS rgb() string
+    /// Convert to CSS `rgb()` string
     pub fn to_css(&self) -> String {
         format!("rgb({}, {}, {})", self.r, self.g, self.b)
     }
 
-    /// Convert to CSS rgba() string with alpha
+    /// Convert to CSS `rgba()` string with alpha
     pub fn to_css_rgba(&self, alpha: f32) -> String {
         format!("rgba({}, {}, {}, {})", self.r, self.g, self.b, alpha)
     }
@@ -77,17 +77,17 @@ impl RgbColor {
         let inv = 1.0 - factor;
 
         RgbColor {
-            r: ((self.r as f32 * inv) + (other.r as f32 * factor)) as u8,
-            g: ((self.g as f32 * inv) + (other.g as f32 * factor)) as u8,
-            b: ((self.b as f32 * inv) + (other.b as f32 * factor)) as u8,
+            r: ((f32::from(self.r) * inv) + (f32::from(other.r) * factor)) as u8,
+            g: ((f32::from(self.g) * inv) + (f32::from(other.g) * factor)) as u8,
+            b: ((f32::from(self.b) * inv) + (f32::from(other.b) * factor)) as u8,
         }
     }
 
     /// Get luminance (0.0 - 1.0)
     pub fn luminance(&self) -> f32 {
-        let r = self.r as f32 / 255.0;
-        let g = self.g as f32 / 255.0;
-        let b = self.b as f32 / 255.0;
+        let r = f32::from(self.r) / 255.0;
+        let g = f32::from(self.g) / 255.0;
+        let b = f32::from(self.b) / 255.0;
 
         0.2126 * r + 0.7152 * g + 0.0722 * b
     }
@@ -119,24 +119,24 @@ impl Default for ColorPalette {
         let mut colors = [RgbColor::new(0, 0, 0); 256];
 
         // Standard ANSI colors (0-7)
-        colors[0] = RgbColor::new(0, 0, 0);         // Black
-        colors[1] = RgbColor::new(204, 0, 0);       // Red
-        colors[2] = RgbColor::new(78, 154, 6);      // Green
-        colors[3] = RgbColor::new(196, 160, 0);     // Yellow
-        colors[4] = RgbColor::new(52, 101, 164);    // Blue
-        colors[5] = RgbColor::new(117, 80, 123);    // Magenta
-        colors[6] = RgbColor::new(6, 152, 154);     // Cyan
-        colors[7] = RgbColor::new(211, 215, 207);   // White
+        colors[0] = RgbColor::new(0, 0, 0); // Black
+        colors[1] = RgbColor::new(204, 0, 0); // Red
+        colors[2] = RgbColor::new(78, 154, 6); // Green
+        colors[3] = RgbColor::new(196, 160, 0); // Yellow
+        colors[4] = RgbColor::new(52, 101, 164); // Blue
+        colors[5] = RgbColor::new(117, 80, 123); // Magenta
+        colors[6] = RgbColor::new(6, 152, 154); // Cyan
+        colors[7] = RgbColor::new(211, 215, 207); // White
 
         // Bright ANSI colors (8-15)
-        colors[8] = RgbColor::new(85, 87, 83);      // Bright Black
-        colors[9] = RgbColor::new(239, 41, 41);     // Bright Red
-        colors[10] = RgbColor::new(138, 226, 52);   // Bright Green
-        colors[11] = RgbColor::new(252, 233, 79);   // Bright Yellow
-        colors[12] = RgbColor::new(114, 159, 207);  // Bright Blue
-        colors[13] = RgbColor::new(173, 127, 168);  // Bright Magenta
-        colors[14] = RgbColor::new(52, 226, 226);   // Bright Cyan
-        colors[15] = RgbColor::new(238, 238, 236);  // Bright White
+        colors[8] = RgbColor::new(85, 87, 83); // Bright Black
+        colors[9] = RgbColor::new(239, 41, 41); // Bright Red
+        colors[10] = RgbColor::new(138, 226, 52); // Bright Green
+        colors[11] = RgbColor::new(252, 233, 79); // Bright Yellow
+        colors[12] = RgbColor::new(114, 159, 207); // Bright Blue
+        colors[13] = RgbColor::new(173, 127, 168); // Bright Magenta
+        colors[14] = RgbColor::new(52, 226, 226); // Bright Cyan
+        colors[15] = RgbColor::new(238, 238, 236); // Bright White
 
         // 216 color cube (16-231)
         let mut idx = 16;

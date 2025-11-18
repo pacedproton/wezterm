@@ -1,6 +1,6 @@
 //! Terminal events and subscription system
 
-use crate::{cursor::CursorShape, color::RgbColor};
+use crate::{color::RgbColor, cursor::CursorShape};
 
 /// Terminal events that can be subscribed to
 #[derive(Debug, Clone)]
