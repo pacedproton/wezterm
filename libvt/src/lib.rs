@@ -51,12 +51,15 @@
 pub mod buffer_api;
 pub mod buffer_set;
 pub mod cell;
+pub mod character_joiner;
 pub mod color;
 pub mod cursor;
 pub mod error;
 pub mod events;
 pub mod input;
+pub mod link_provider;
 pub mod markers;
+pub mod modes;
 pub mod parser;
 pub mod parser_ext;
 pub mod screen;
@@ -66,12 +69,20 @@ pub mod terminal;
 pub use buffer_api::{BufferCellView, BufferLineView, BufferView};
 pub use buffer_set::{BufferId, BufferSet};
 pub use cell::{Cell, CellAttributes, Hyperlink, UnderlineStyle};
+pub use character_joiner::{
+    CharacterJoiner, CharacterJoinerManager, CombiningMarksJoiner, JoinRange, LigatureJoiner,
+};
 pub use color::{ColorPalette, ColorSpec, RgbColor};
 pub use cursor::{Cursor, CursorShape, CursorVisibility};
 pub use error::{Error, Result};
 pub use events::{ClipboardType, EventSubscriber, TerminalEvent, TerminalMode};
 pub use input::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+pub use link_provider::{
+    FilePathLinkProvider, Link, LinkProvider, LinkProviderManager, RegexLinkProvider,
+    UrlLinkProvider,
+};
 pub use markers::{DecorationType, Marker, MarkerId, MarkerManager};
+pub use modes::{ModeManager, TerminalMode as Mode};
 pub use parser_ext::{ClosureHandler, HandlerRegistry, HandlerResult, SequenceHandler, SequenceType};
 pub use screen::{Line, Position, Screen};
 pub use selection::{Selection, SelectionMode};

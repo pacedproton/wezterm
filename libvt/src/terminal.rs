@@ -315,7 +315,7 @@ impl Terminal {
     /// let (x, y) = (buffer.cursor_x(), buffer.cursor_y());
     /// println!("Cursor at: ({}, {})", x, y);
     /// ```
-    pub fn get_buffer_view(&self) -> BufferView {
+    pub fn get_buffer_view(&self) -> BufferView<'_> {
         BufferView::new(
             self.buffers.active(),
             self.cursor.col,
@@ -338,7 +338,7 @@ impl Terminal {
     /// let buffer = term.get_buffer_view_with_scrollback(100);
     /// assert_eq!(buffer.base_y(), 100);
     /// ```
-    pub fn get_buffer_view_with_scrollback(&self, base_y: u32) -> BufferView {
+    pub fn get_buffer_view_with_scrollback(&self, base_y: u32) -> BufferView<'_> {
         BufferView::with_scrollback(
             self.buffers.active(),
             self.cursor.col,
