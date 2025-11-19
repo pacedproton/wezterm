@@ -1,11 +1,30 @@
 //! Terminal events and subscription system
 
-use crate::{color::RgbColor, cursor::CursorShape};
+use crate::{color::RgbColor, cursor::CursorShape, input::KeyModifiers as InputKeyModifiers};
 
 /// Terminal events that can be subscribed to
 #[derive(Debug, Clone)]
 pub enum TerminalEvent {
-    /// Terminal was resized
+    /// Data output from the terminal (xterm.js: onData)
+    /// This is fired when the terminal has data to send (e.g., user input)
+    Data(Vec<u8>),
+
+    /// Binary data output from the terminal (xterm.js: onBinary)
+    /// Similar to Data but explicitly for binary mode
+    Binary(Vec<u8>),
+
+    /// Key input event (xterm.js: onKey)
+    /// Fired when a key is pressed
+    Key {
+        /// The key that was pressed
+        key: String,
+        /// The DOM event code (e.g., `KeyA`, `Enter`)
+        code: String,
+        /// Modifier state (shift, ctrl, alt, meta)
+        modifiers: InputKeyModifiers,
+    },
+
+    /// Terminal was resized (xterm.js: onResize)
     Resized {
         /// New width in columns
         cols: u16,
@@ -13,7 +32,22 @@ pub enum TerminalEvent {
         rows: u16,
     },
 
-    /// Terminal bell rang
+    /// Scroll position changed (xterm.js: onScroll)
+    /// Fired when the scroll position changes
+    Scroll {
+        /// New scroll position (0 = bottom, positive = scrolled up)
+        position: u32,
+    },
+
+    /// Line feed occurred (xterm.js: onLineFeed)
+    /// Fired whenever a line feed is added to the terminal
+    LineFeed,
+
+    /// Data was successfully parsed (xterm.js: onWriteParsed)
+    /// Fired after data is written and parsed
+    WriteParsed,
+
+    /// Terminal bell rang (xterm.js: onBell)
     Bell,
 
     /// Title changed (via OSC 0/2)
@@ -42,8 +76,14 @@ pub enum TerminalEvent {
     /// Cursor visibility changed
     CursorVisibilityChanged(bool),
 
-    /// Selection changed
+    /// Selection changed (xterm.js: onSelectionChange)
     SelectionChanged,
+
+    /// Active buffer changed (primary/alternate)
+    BufferChange {
+        /// Whether alternate buffer is now active
+        alternate: bool,
+    },
 
     /// Clipboard request (OSC 52)
     ClipboardRequest {
@@ -253,5 +293,81 @@ mod tests {
 
         let cut = ClipboardType::CutBuffer(3);
         assert_eq!(cut, ClipboardType::CutBuffer(3));
+    }
+
+    #[test]
+    fn test_data_event() {
+        let data = vec![72, 101, 108, 108, 111]; // "Hello"
+        let event = TerminalEvent::Data(data.clone());
+
+        if let TerminalEvent::Data(d) = event {
+            assert_eq!(d, data);
+        } else {
+            panic!("Expected Data event");
+        }
+    }
+
+    #[test]
+    fn test_binary_event() {
+        let data = vec![0x00, 0x01, 0x02, 0xFF];
+        let event = TerminalEvent::Binary(data.clone());
+
+        if let TerminalEvent::Binary(d) = event {
+            assert_eq!(d, data);
+        } else {
+            panic!("Expected Binary event");
+        }
+    }
+
+    #[test]
+    fn test_key_event() {
+        let event = TerminalEvent::Key {
+            key: "a".to_string(),
+            code: "KeyA".to_string(),
+            modifiers: InputKeyModifiers::CONTROL,
+        };
+
+        if let TerminalEvent::Key { key, code, modifiers } = event {
+            assert_eq!(key, "a");
+            assert_eq!(code, "KeyA");
+            assert!(modifiers.contains(InputKeyModifiers::CONTROL));
+            assert!(!modifiers.contains(InputKeyModifiers::SHIFT));
+        } else {
+            panic!("Expected Key event");
+        }
+    }
+
+    #[test]
+    fn test_scroll_event() {
+        let event = TerminalEvent::Scroll { position: 42 };
+
+        if let TerminalEvent::Scroll { position } = event {
+            assert_eq!(position, 42);
+        } else {
+            panic!("Expected Scroll event");
+        }
+    }
+
+    #[test]
+    fn test_buffer_change_event() {
+        let event = TerminalEvent::BufferChange { alternate: true };
+
+        if let TerminalEvent::BufferChange { alternate } = event {
+            assert!(alternate);
+        } else {
+            panic!("Expected BufferChange event");
+        }
+    }
+
+    #[test]
+    fn test_linefeed_event() {
+        let event = TerminalEvent::LineFeed;
+        assert!(matches!(event, TerminalEvent::LineFeed));
+    }
+
+    #[test]
+    fn test_write_parsed_event() {
+        let event = TerminalEvent::WriteParsed;
+        assert!(matches!(event, TerminalEvent::WriteParsed));
     }
 }

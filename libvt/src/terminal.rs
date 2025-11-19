@@ -1,13 +1,14 @@
 //! Terminal emulator core implementation
 
 use crate::{
+    buffer_set::{BufferId, BufferSet},
     cell::Cell,
     color::ColorPalette,
     cursor::{Cursor, CursorShape},
     events::{EventSubscriber, TerminalEvent},
     input::{KeyCode, KeyModifiers, MouseEvent},
     parser::{Action, Parser},
-    screen::{Line, Position, Screen, Selection},
+    screen::{Line, Position, Selection},
 };
 use std::collections::VecDeque;
 
@@ -88,11 +89,14 @@ pub struct Terminal {
     cols: u16,
     rows: u16,
 
-    /// Current screen (main + alternate)
-    screen: Screen,
+    /// Buffer set (primary + alternate screens)
+    buffers: BufferSet,
 
-    /// Scrollback buffer
+    /// Scrollback buffer (only for primary screen)
     scrollback: VecDeque<Line>,
+
+    /// Current scroll position (0 = bottom, positive = scrolled up)
+    scroll_position: u32,
 
     /// Parser for escape sequences
     parser: Parser,
@@ -118,9 +122,6 @@ pub struct Terminal {
     /// Working directory
     working_directory: Option<String>,
 
-    /// Alternate screen active
-    alternate_screen: bool,
-
     /// Selection
     selection: Option<Selection>,
 }
@@ -128,15 +129,16 @@ pub struct Terminal {
 impl Terminal {
     /// Create a new terminal
     pub fn new(cols: u16, rows: u16, config: TerminalConfig) -> Self {
-        let screen = Screen::new(cols as usize, rows as usize);
+        let buffers = BufferSet::new(cols as usize, rows as usize);
         let scrollback = VecDeque::with_capacity(config.scrollback_lines);
         let cursor = Cursor::new_with_shape(config.cursor_shape);
 
         Self {
             cols,
             rows,
-            screen,
+            buffers,
             scrollback,
+            scroll_position: 0,
             parser: Parser::new(),
             cursor,
             config,
@@ -145,7 +147,6 @@ impl Terminal {
             dirty_lines: vec![false; rows as usize],
             title: String::new(),
             working_directory: None,
-            alternate_screen: false,
             selection: None,
         }
     }
@@ -187,6 +188,9 @@ impl Terminal {
             self.perform_action(action);
         }
 
+        // Emit WriteParsed event after data is successfully parsed
+        self.emit_event(TerminalEvent::WriteParsed);
+
         data.len()
     }
 
@@ -194,14 +198,26 @@ impl Terminal {
     pub fn resize(&mut self, cols: u16, rows: u16) {
         self.cols = cols;
         self.rows = rows;
-        self.screen.resize(cols as usize, rows as usize);
+        self.buffers.resize(cols as usize, rows as usize);
         self.dirty_lines = vec![true; rows as usize];
         self.emit_event(TerminalEvent::Resized { cols, rows });
     }
 
     /// Handle keyboard input, returns bytes to write to PTY
     pub fn key_down(&mut self, key: KeyCode, modifiers: KeyModifiers) -> Vec<u8> {
-        self.encode_key(key, modifiers)
+        let data = self.encode_key(key, modifiers);
+
+        // Emit Data event for user input
+        if !data.is_empty() {
+            self.emit_event(TerminalEvent::Data(data.clone()));
+        }
+
+        data
+    }
+
+    /// Send binary data to the terminal (for binary mode)
+    pub fn send_binary(&mut self, data: Vec<u8>) {
+        self.emit_event(TerminalEvent::Binary(data));
     }
 
     /// Handle mouse event, returns bytes to write to PTY
@@ -211,24 +227,24 @@ impl Terminal {
 
     /// Get a cell at the specified position
     pub fn get_cell(&self, col: u16, row: u16) -> Option<&Cell> {
-        self.screen.get_cell(col as usize, row as usize)
+        self.buffers.active().get_cell(col as usize, row as usize)
     }
 
     /// Get a mutable cell at the specified position
     pub fn get_cell_mut(&mut self, col: u16, row: u16) -> Option<&mut Cell> {
         let row_usize = row as usize;
         self.mark_dirty(row_usize);
-        self.screen.get_cell_mut(col as usize, row_usize)
+        self.buffers.active_mut().get_cell_mut(col as usize, row_usize)
     }
 
     /// Get a line at the specified row
     pub fn get_line(&self, row: u16) -> Option<&Line> {
-        self.screen.get_line(row as usize)
+        self.buffers.active().get_line(row as usize)
     }
 
     /// Get all visible lines
     pub fn visible_lines(&self) -> impl Iterator<Item = &Line> {
-        self.screen.lines()
+        self.buffers.active().lines()
     }
 
     /// Get current cursor position (0-indexed)
@@ -304,9 +320,68 @@ impl Terminal {
         self.working_directory.as_deref()
     }
 
+    /// Get current scroll position (0 = bottom, positive = scrolled up)
+    pub fn scroll_position(&self) -> u32 {
+        self.scroll_position
+    }
+
+    /// Set scroll position
+    pub fn scroll(&mut self, position: u32) {
+        let max_scroll = self.scrollback.len() as u32;
+        self.scroll_position = position.min(max_scroll);
+        self.emit_event(TerminalEvent::Scroll {
+            position: self.scroll_position,
+        });
+    }
+
+    /// Scroll up by n lines
+    pub fn scroll_up_lines(&mut self, lines: u32) {
+        self.scroll(self.scroll_position.saturating_add(lines));
+    }
+
+    /// Scroll down by n lines
+    pub fn scroll_down_lines(&mut self, lines: u32) {
+        self.scroll(self.scroll_position.saturating_sub(lines));
+    }
+
+    /// Scroll to top of scrollback
+    pub fn scroll_to_top(&mut self) {
+        self.scroll(self.scrollback.len() as u32);
+    }
+
+    /// Scroll to bottom (normal position)
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll(0);
+    }
+
     /// Check if terminal is in alternate screen mode
     pub fn is_alternate_screen(&self) -> bool {
-        self.alternate_screen
+        self.buffers.is_alternate_active()
+    }
+
+    /// Switch to alternate screen buffer (used by vim, less, etc.)
+    pub fn enter_alternate_screen(&mut self) {
+        if self.buffers.switch_to_alternate() {
+            // Reset cursor to home position when entering alternate screen
+            // (matches behavior of real terminals)
+            self.cursor.col = 0;
+            self.cursor.row = 0;
+            self.emit_event(TerminalEvent::AlternateScreenEnabled);
+            self.emit_event(TerminalEvent::BufferChange { alternate: true });
+        }
+    }
+
+    /// Switch back to primary screen buffer
+    pub fn exit_alternate_screen(&mut self) {
+        if self.buffers.switch_to_primary() {
+            self.emit_event(TerminalEvent::AlternateScreenDisabled);
+            self.emit_event(TerminalEvent::BufferChange { alternate: false });
+        }
+    }
+
+    /// Get the active buffer ID
+    pub fn active_buffer(&self) -> BufferId {
+        self.buffers.active_buffer_id()
     }
 
     /// Get selection (if any)
@@ -330,7 +405,7 @@ impl Terminal {
     pub fn selected_text(&self) -> Option<String> {
         self.selection
             .as_ref()
-            .map(|sel| self.screen.get_text_in_range(sel.start, sel.end))
+            .map(|sel| self.buffers.active().get_text_in_range(sel.start, sel.end))
     }
 
     /// Get terminal configuration
@@ -362,7 +437,7 @@ impl Terminal {
         let row = self.cursor.row as usize;
 
         if col < self.cols as usize {
-            if let Some(cell) = self.screen.get_cell_mut(col, row) {
+            if let Some(cell) = self.buffers.active_mut().get_cell_mut(col, row) {
                 cell.set_text(c.to_string());
                 cell.set_attrs(self.cursor.attrs.clone());
             }
@@ -401,6 +476,7 @@ impl Terminal {
             }
             0x0A..=0x0C => {
                 // Line feed, vertical tab, form feed
+                self.emit_event(TerminalEvent::LineFeed);
                 self.cursor.row += 1;
                 if self.cursor.row >= self.rows {
                     self.scroll_up();
@@ -455,16 +531,26 @@ impl Terminal {
     }
 
     fn scroll_up(&mut self) {
-        // Move top line to scrollback
-        if let Some(line) = self.screen.remove_line(0) {
-            if self.scrollback.len() >= self.config.scrollback_lines {
-                self.scrollback.pop_front();
+        // Check if we're on alternate before borrowing mutably
+        let is_alternate = self.buffers.is_alternate_active();
+        let screen = self.buffers.active_mut();
+
+        // Handle scrolling based on which buffer is active
+        if is_alternate {
+            // On alternate screen, just remove the top line
+            screen.remove_line(0);
+        } else {
+            // On primary buffer, move top line to scrollback
+            if let Some(line) = screen.remove_line(0) {
+                if self.scrollback.len() >= self.config.scrollback_lines {
+                    self.scrollback.pop_front();
+                }
+                self.scrollback.push_back(line);
             }
-            self.scrollback.push_back(line);
         }
 
         // Add new empty line at bottom
-        self.screen.push_line(Line::new(self.cols as usize));
+        screen.push_line(Line::new(self.cols as usize));
 
         // Mark all lines as dirty
         for i in 0..self.dirty_lines.len() {
@@ -580,5 +666,286 @@ mod tests {
 
         let up = term.encode_key(KeyCode::Up, KeyModifiers::empty());
         assert_eq!(up, b"\x1b[A".to_vec());
+    }
+
+    #[test]
+    fn test_write_parsed_event() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        term.write(b"Hello");
+
+        let recorded = events.lock().unwrap();
+        // Should have WriteParsed event
+        assert!(recorded
+            .iter()
+            .any(|e| matches!(e, TerminalEvent::WriteParsed)));
+    }
+
+    #[test]
+    fn test_linefeed_event() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        term.write(b"\n");
+
+        let recorded = events.lock().unwrap();
+        // Should have LineFeed event
+        assert!(recorded
+            .iter()
+            .any(|e| matches!(e, TerminalEvent::LineFeed)));
+    }
+
+    #[test]
+    fn test_scroll_api() {
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        // Initial position is 0
+        assert_eq!(term.scroll_position(), 0);
+
+        // Add some scrollback first by filling the terminal
+        for _ in 0..30 {
+            term.write(b"Line\n");
+        }
+
+        // Scroll to bottom
+        term.scroll_to_bottom();
+        assert_eq!(term.scroll_position(), 0);
+
+        // Scroll up
+        term.scroll_up_lines(5);
+        assert_eq!(term.scroll_position(), 5);
+
+        // Scroll down
+        term.scroll_down_lines(2);
+        assert_eq!(term.scroll_position(), 3);
+
+        // Scroll to bottom
+        term.scroll_to_bottom();
+        assert_eq!(term.scroll_position(), 0);
+
+        // Scroll to top
+        term.scroll_to_top();
+        assert!(term.scroll_position() > 0);
+    }
+
+    #[test]
+    fn test_scroll_event() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        // Add some scrollback first
+        for _ in 0..30 {
+            term.write(b"Line\n");
+        }
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        term.scroll_up_lines(5);
+
+        let recorded = events.lock().unwrap();
+        // Should have Scroll event with position 5
+        assert!(recorded.iter().any(|e| matches!(
+            e,
+            TerminalEvent::Scroll { position: 5 }
+        )));
+    }
+
+    #[test]
+    fn test_data_event() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        term.key_down(KeyCode::Char('a'), KeyModifiers::empty());
+
+        let recorded = events.lock().unwrap();
+        // Should have Data event with 'a'
+        assert!(recorded.iter().any(|e| {
+            if let TerminalEvent::Data(data) = e {
+                data == &vec![b'a']
+            } else {
+                false
+            }
+        }));
+    }
+
+    #[test]
+    fn test_binary_event() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        let binary_data = vec![0x00, 0x01, 0x02, 0xFF];
+        term.send_binary(binary_data.clone());
+
+        let recorded = events.lock().unwrap();
+        // Should have Binary event
+        assert!(recorded.iter().any(|e| {
+            if let TerminalEvent::Binary(data) = e {
+                data == &binary_data
+            } else {
+                false
+            }
+        }));
+    }
+
+    #[test]
+    fn test_alternate_screen() {
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        // Initially on primary buffer
+        assert!(!term.is_alternate_screen());
+        assert_eq!(term.active_buffer(), BufferId::Primary);
+
+        // Write some data to primary
+        term.write(b"Primary\n");
+
+        // Switch to alternate
+        term.enter_alternate_screen();
+        assert!(term.is_alternate_screen());
+        assert_eq!(term.active_buffer(), BufferId::Alternate);
+
+        // Alternate should be cleared
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), " ");
+        }
+
+        // Write to alternate
+        term.write(b"Alternate\n");
+
+        // Switch back to primary
+        term.exit_alternate_screen();
+        assert!(!term.is_alternate_screen());
+        assert_eq!(term.active_buffer(), BufferId::Primary);
+
+        // Primary data should still be there
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), "P");
+        }
+    }
+
+    #[test]
+    fn test_alternate_screen_events() {
+        use crate::events::CallbackSubscriber;
+        use std::sync::{Arc, Mutex};
+
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        term.subscribe(Box::new(CallbackSubscriber::new(move |event| {
+            events_clone.lock().unwrap().push(event.clone());
+        })));
+
+        // Enter alternate screen
+        term.enter_alternate_screen();
+
+        let recorded = events.lock().unwrap();
+        // Should have both AlternateScreenEnabled and BufferChange events
+        assert!(recorded
+            .iter()
+            .any(|e| matches!(e, TerminalEvent::AlternateScreenEnabled)));
+        assert!(recorded
+            .iter()
+            .any(|e| matches!(e, TerminalEvent::BufferChange { alternate: true })));
+    }
+
+    #[test]
+    fn test_scrollback_only_on_primary() {
+        let mut term = Terminal::new(80, 5, TerminalConfig::default());
+
+        // Fill primary screen (should create scrollback)
+        for i in 0..10 {
+            term.write(format!("Line {}\n", i).as_bytes());
+        }
+
+        // Should have scrollback on primary
+        assert!(term.scrollback().len() > 0);
+        let primary_scrollback = term.scrollback().len();
+
+        // Switch to alternate
+        term.enter_alternate_screen();
+
+        // Fill alternate screen (should NOT add to scrollback)
+        for i in 0..10 {
+            term.write(format!("Alt {}\n", i).as_bytes());
+        }
+
+        // Scrollback should not have grown
+        assert_eq!(term.scrollback().len(), primary_scrollback);
+    }
+
+    #[test]
+    fn test_independent_buffers() {
+        let mut term = Terminal::new(80, 24, TerminalConfig::default());
+
+        // Write to primary
+        term.write(b"Primary");
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), "P");
+        }
+
+        // Switch to alternate and write
+        term.enter_alternate_screen();
+        term.write(b"Alternate");
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), "A");
+        }
+
+        // Switch back to primary
+        term.exit_alternate_screen();
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), "P");
+        }
+
+        // Switch to alternate again
+        term.enter_alternate_screen();
+        // Should be cleared (not the previous "Alternate" text)
+        if let Some(cell) = term.get_cell(0, 0) {
+            assert_eq!(cell.text(), " ");
+        }
     }
 }
