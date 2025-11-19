@@ -7,6 +7,7 @@ use crate::{
     cursor::{Cursor, CursorShape},
     events::{EventSubscriber, TerminalEvent},
     input::{KeyCode, KeyModifiers, MouseEvent},
+    markers::{DecorationType, Marker, MarkerId, MarkerManager},
     parser::{Action, Parser},
     screen::{Line, Position},
     selection::{Selection, SelectionMode},
@@ -125,6 +126,9 @@ pub struct Terminal {
 
     /// Selection
     selection: Option<Selection>,
+
+    /// Marker manager for line annotations
+    markers: MarkerManager,
 }
 
 impl Terminal {
@@ -149,6 +153,7 @@ impl Terminal {
             title: String::new(),
             working_directory: None,
             selection: None,
+            markers: MarkerManager::new(),
         }
     }
 
@@ -434,6 +439,50 @@ impl Terminal {
             .map(|sel| sel.get_text_trimmed(self.buffers.active()))
     }
 
+    // Marker management
+
+    /// Add a marker at the specified line
+    ///
+    /// Returns the ID of the created marker
+    pub fn add_marker(&mut self, line: u32, decoration: DecorationType) -> MarkerId {
+        self.markers.add_marker(line, decoration)
+    }
+
+    /// Add a marker with a message
+    pub fn add_marker_with_message(
+        &mut self,
+        line: u32,
+        decoration: DecorationType,
+        message: impl Into<String>,
+    ) -> MarkerId {
+        self.markers.add_marker_with_message(line, decoration, message)
+    }
+
+    /// Remove a marker by ID
+    pub fn remove_marker(&mut self, id: MarkerId) -> Option<Marker> {
+        self.markers.remove_marker(id)
+    }
+
+    /// Get a marker by ID
+    pub fn get_marker(&self, id: MarkerId) -> Option<&Marker> {
+        self.markers.get_marker(id)
+    }
+
+    /// Get all markers for a specific line
+    pub fn get_markers_for_line(&self, line: u32) -> Vec<&Marker> {
+        self.markers.get_markers_for_line(line)
+    }
+
+    /// Get all markers
+    pub fn markers(&self) -> impl Iterator<Item = &Marker> {
+        self.markers.markers()
+    }
+
+    /// Clear all markers
+    pub fn clear_markers(&mut self) {
+        self.markers.clear();
+    }
+
     /// Get terminal configuration
     pub fn config(&self) -> &TerminalConfig {
         &self.config
@@ -577,6 +626,9 @@ impl Terminal {
 
         // Add new empty line at bottom
         screen.push_line(Line::new(self.cols as usize));
+
+        // Update markers (one line scrolled)
+        self.markers.handle_scroll(1);
 
         // Mark all lines as dirty
         for i in 0..self.dirty_lines.len() {
