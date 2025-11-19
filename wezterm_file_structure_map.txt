@@ -1,0 +1,299 @@
+================================================================================
+WEZTERM CODEBASE MAP - Pane Management & macOS Menu System
+================================================================================
+
+DIRECTORY TREE (Relevant Paths):
+
+/home/user/wezterm/
+├── mux/                                    [MULTIPLEXER/PANE CORE]
+│   └── src/
+│       ├── pane.rs                        ← Pane trait definition (PaneId, etc)
+│       ├── tab.rs                         ← Tab struct, SplitDirection, PositionedPane
+│       ├── window.rs                      ← Window struct (WindowId, tab management)
+│       ├── lib.rs                         ← Mux API (split_pane async function)
+│       ├── localpane.rs                   ← Local pane implementation
+│       ├── domain.rs                      ← Domain trait (split_pane delegation)
+│       └── connui.rs                      ← Connection UI
+│
+├── window/                                 [WINDOW & PLATFORM ABSTRACTION]
+│   └── src/
+│       └── os/
+│           ├── macos/                     [macOS NATIVE CODE]
+│           │   ├── menu.rs                ← NSMenu wrappers, MenuItem, RepresentedItem
+│           │   ├── app.rs                 ← App delegate, dock menu, key assignment handler
+│           │   ├── connection.rs          ← Platform connection
+│           │   ├── window.rs              ← NSWindow implementation
+│           │   ├── metal.rs               ← Metal renderer integration
+│           │   ├── keycodes.rs
+│           │   ├── clipboard.rs
+│           │   └── bitmap.rs
+│           ├── wayland/                   [Linux Wayland]
+│           ├── windows/                   [Windows]
+│           └── x11/                       [Linux X11]
+│
+├── wezterm-gui/                            [GUI RENDERING & INTERACTION]
+│   └── src/
+│       ├── main.rs
+│       ├── frontend.rs                    ← GUI frontend, menu bar recreation calls
+│       ├── commands.rs                    ← CommandDef, recreate_menubar() (macOS)
+│       ├── inputmap.rs                    ← Key binding resolution
+│       ├── termwindow/                    [TERMINAL WINDOW IMPLEMENTATION]
+│       │   ├── mod.rs                     ← TermWindow struct, UIItem, UIItemType
+│       │   ├── mouseevent.rs              ← MOUSE HANDLER, right-click at line 411
+│       │   ├── keyevent.rs                ← Keyboard event handling
+│       │   ├── render/
+│       │   │   ├── split.rs               ← paint_split() - renders split dividers
+│       │   │   ├── pane.rs                ← Pane rendering
+│       │   │   └── mod.rs                 ← Render orchestration
+│       │   ├── paneselect.rs              ← Pane selection overlay
+│       │   ├── clipboard.rs
+│       │   ├── selection.rs
+│       │   └── ...
+│       └── overlay/
+│           ├── launcher.rs                ← Launcher overlay (used for ShowLauncher)
+│           ├── confirm_close_pane.rs
+│           └── ...
+│
+├── wezterm-metal/                          [GPU RENDERER FOR macOS]
+│   └── src/
+│       ├── lib.rs                         ← High-performance Metal renderer
+│       ├── renderer.rs                    ← MetalRenderer implementation
+│       ├── atlas.rs                       ← Glyph atlas (GPU)
+│       ├── blit.rs                        ← GPU blitting
+│       ├── pipeline.rs                    ← Rendering pipeline
+│       ├── debug.rs                       ← Performance profiling
+│       └── shaders/                       ← Metal shader code
+│
+├── config/
+│   └── src/
+│       └── keyassignment.rs               ← KeyAssignment enum (menu actions)
+│
+├── wezterm-gui-subcommands/                [GUI SUBCOMMANDS]
+│
+└── lua-api-crates/                         [LUA API]
+    └── mux/                                ← Mux Lua bindings
+
+================================================================================
+KEY INTEGRATION POINTS (For Context Menu Implementation)
+================================================================================
+
+1. MOUSE EVENT HANDLING
+   File: wezterm-gui/src/termwindow/mouseevent.rs:61
+   Function: mouse_event_impl()
+   Status: Ready to extend
+   ├─ Handles MouseEventKind::Press(MousePress::Right)
+   ├─ Currently line 411 routes to ShowLauncher
+   ├─ Hit-test at: resolve_ui_item() line 27
+   └─ Dispatch through: TermWindowNotif::PerformAssignment
+
+2. SPLIT DIVIDER RENDERING & HIT-TESTING
+   File: wezterm-gui/src/termwindow/render/split.rs:8
+   Function: paint_split()
+   Status: Creates UIItem::Split for hit-testing
+   └─ Currently unused for right-click interaction (line 46 in mouseevent.rs)
+
+3. PANE MANAGEMENT API
+   File: mux/src/lib.rs:1187
+   Function: split_pane() async
+   Status: High-level split API ready to use
+   └─ Handles domain, window, tab resolution
+
+4. MENU SYSTEM
+   File: window/src/os/macos/menu.rs
+   Classes: Menu, MenuItem, RepresentedItem
+   Status: Fully implemented, ready to extend
+   ├─ Menu creation: Menu::new_with_title()
+   ├─ Item creation: MenuItem::new_with()
+   ├─ Actions: MenuItem::set_represented_item(RepresentedItem::KeyAssignment)
+   └─ Handler: window/src/os/macos/app.rs:96 (wezterm_perform_key_assignment)
+
+5. MENU BAR GENERATION
+   File: wezterm-gui/src/commands.rs:380
+   Function: recreate_menubar() [macOS only]
+   Status: Pattern to follow for context menu generation
+   └─ Uses CommandDef + ExpandedCommand for menu metadata
+
+6. COMMAND DEFINITIONS
+   File: wezterm-gui/src/commands.rs:56-79
+   Struct: CommandDef
+   Status: Can be extended for context menu items
+   ├─ brief: Menu label
+   ├─ keys: Keyboard shortcuts
+   ├─ args: Context filtering (ActivePane, ActiveTab, ActiveWindow)
+   ├─ menubar: Menu path
+   └─ action: KeyAssignment to execute
+
+================================================================================
+CRITICAL DATA STRUCTURES FOR CONTEXT MENUS
+================================================================================
+
+Pane Identification:
+  PaneId = usize (allocated via alloc_pane_id())
+  From: mux/src/pane.rs:24-29
+
+Pane Position:
+  struct PositionedPane {
+    index: usize,           // Topological index
+    is_active: bool,
+    is_zoomed: bool,
+    left: usize,            // Cell coordinates
+    top: usize,
+    width: usize,
+    height: usize,
+    pane: Arc<dyn Pane>,
+  }
+  From: mux/src/tab.rs:57-79
+
+Split Divider Position:
+  struct PositionedSplit {
+    index: usize,           // Node index in binary tree
+    direction: SplitDirection,  // Horizontal or Vertical
+    left: usize,            // Cell coordinates
+    top: usize,
+    size: usize,            // Width for vertical, height for horizontal
+  }
+  From: mux/src/tab.rs:192-206
+
+Split Request for Menu Actions:
+  struct SplitRequest {
+    direction: SplitDirection,      // Horizontal or Vertical
+    target_is_second: bool,         // New pane position
+    top_level: bool,                // Apply to tab root vs active pane
+    size: SplitSize,                // Cells or Percent
+  }
+  From: mux/src/tab.rs:121-131
+
+UI Item Hit-Testing:
+  enum UIItemType {
+    TabBar(usize),
+    CloseTab(TabId),
+    Split(PositionedSplit),   ← This is what we want to capture
+    AboveScrollThumb,
+    BelowScrollThumb,
+    ScrollThumb,
+  }
+  struct UIItem {
+    x: usize, y: usize, width: usize, height: usize,
+    item_type: UIItemType,
+  }
+  From: wezterm-gui/src/termwindow/mod.rs
+
+Menu Item Action:
+  enum RepresentedItem {
+    KeyAssignment(KeyAssignment),
+  }
+  From: window/src/os/macos/menu.rs:179-182
+
+================================================================================
+CODE PATTERNS TO FOLLOW
+================================================================================
+
+Pattern 1: Creating a Dock Menu (Example from app.rs:131)
+──────────────────────────────────────────────────────────
+extern "C" fn application_dock_menu(...) -> *mut Object {
+    let dock_menu = Menu::new_with_title("");
+    let item = MenuItem::new_with(
+        "Label",
+        Some(sel!(weztermPerformKeyAssignment:)),
+        ""
+    );
+    item.set_represented_item(
+        RepresentedItem::KeyAssignment(KeyAssignment::SpawnWindow)
+    );
+    dock_menu.add_item(&item);
+    dock_menu.autorelease()
+}
+
+Pattern 2: Dispatching Menu Item Actions (Example from app.rs:96)
+──────────────────────────────────────────────────────────────────
+extern "C" fn wezterm_perform_key_assignment(
+    _self: &mut Object,
+    _sel: Sel,
+    menu_item: *mut Object,
+) {
+    let menu_item = MenuItem::with_menu_item(menu_item);
+    if let Some(RepresentedItem::KeyAssignment(action)) = 
+        menu_item.get_represented_item() {
+        if let Some(conn) = Connection::get() {
+            conn.dispatch_app_event(
+                ApplicationEvent::PerformKeyAssignment(action)
+            );
+        }
+    }
+}
+
+Pattern 3: Mouse Event Handler (From mouseevent.rs:61)
+───────────────────────────────────────────────────────
+pub fn mouse_event_impl(&mut self, event: MouseEvent, context: &dyn WindowOps) {
+    let resolved = self.resolve_ui_item(&event);  // Get clicked item
+    
+    match event.kind {
+        WMEK::Press(MousePress::Right) => {
+            // TODO: Show context menu based on resolved item
+        }
+        // ...
+    }
+}
+
+================================================================================
+LINES OF CODE TO MODIFY/EXTEND
+================================================================================
+
+1. wezterm-gui/src/termwindow/mouseevent.rs:525-530
+   Location: do_new_tab_button_click()
+   Current: Handles right-click on new tab button → ShowLauncher
+   Future: Extend to handle right-click on panes and splits
+
+2. wezterm-gui/src/termwindow/mod.rs:46
+   Location: UIItemType::Split match arm
+   Current: Empty match arm (line 46)
+   Future: Handle right-click on split dividers
+
+3. wezterm-gui/src/commands.rs:380
+   Location: recreate_menubar() [macOS]
+   Current: Generates application menu bar
+   Future: Extract menu-building logic for reuse in context menus
+
+4. wezterm-gui/src/termwindow/mod.rs
+   Location: TermWindow struct
+   Future: Add methods:
+           - show_pane_context_menu(pane_id, x, y)
+           - show_split_context_menu(split, x, y)
+
+5. wezterm-gui/src/frontend.rs
+   Location: Application lifecycle
+   Current: Calls recreate_menubar() on config changes
+   Status: Ready to integrate context menus
+
+================================================================================
+RELATIVE FILE PATHS (from /home/user/wezterm/)
+================================================================================
+
+Core Pane/Tab/Window (mux layer):
+  mux/src/pane.rs
+  mux/src/tab.rs
+  mux/src/window.rs
+  mux/src/lib.rs
+
+macOS Menu System:
+  window/src/os/macos/menu.rs
+  window/src/os/macos/app.rs
+  window/src/os/macos/connection.rs
+  window/src/os/macos/window.rs
+
+GUI Layer:
+  wezterm-gui/src/termwindow/mod.rs
+  wezterm-gui/src/termwindow/mouseevent.rs
+  wezterm-gui/src/termwindow/render/split.rs
+  wezterm-gui/src/termwindow/render/pane.rs
+  wezterm-gui/src/commands.rs
+  wezterm-gui/src/frontend.rs
+
+macOS GPU Rendering:
+  wezterm-metal/src/lib.rs
+  wezterm-metal/src/renderer.rs
+
+Config/Commands:
+  config/src/keyassignment.rs
+
+================================================================================
