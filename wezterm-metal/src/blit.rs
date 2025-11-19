@@ -292,7 +292,33 @@ pub struct TripleBuffer {
 
 impl TripleBuffer {
     /// Create a new triple buffer
-    pub fn new(device: &Device, width: u64, height: u64, pixel_format: MTLPixelFormat) -> Self {
+    ///
+    /// # Arguments
+    /// * `device` - Metal device
+    /// * `cols` - Terminal columns
+    /// * `rows` - Terminal rows
+    /// * `cell_width` - Cell width in pixels
+    /// * `cell_height` - Cell height in pixels
+    /// * `pixel_format` - Texture pixel format
+    pub fn new(
+        device: &Device,
+        cols: u16,
+        rows: u16,
+        cell_width: f32,
+        cell_height: f32,
+        pixel_format: MTLPixelFormat,
+    ) -> Result<Self, String> {
+        // Calculate texture dimensions in pixels
+        let width = (cols as f32 * cell_width).ceil() as u64;
+        let height = (rows as f32 * cell_height).ceil() as u64;
+
+        if width == 0 || height == 0 {
+            return Err(format!(
+                "Invalid texture dimensions: {}x{} (cols={}, rows={}, cell={}x{})",
+                width, height, cols, rows, cell_width, cell_height
+            ));
+        }
+
         let descriptor = TextureDescriptor::new();
         descriptor.set_texture_type(MTLTextureType::D2);
         descriptor.set_pixel_format(pixel_format);
@@ -314,12 +340,12 @@ impl TripleBuffer {
         let mut available = VecDeque::with_capacity(3);
         available.push_back(2); // Third buffer starts available
 
-        Self {
+        Ok(Self {
             buffers,
             current_index: 0,
             presenting_index: 1,
             available,
-        }
+        })
     }
 
     /// Get the current rendering buffer

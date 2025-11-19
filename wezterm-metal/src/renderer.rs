@@ -157,7 +157,17 @@ impl MetalRenderer {
         // Initialize incremental rendering components if enabled
         let (dirty_tracker, triple_buffer, blitter) = if config.enable_incremental {
             let tracker = DirtyTracker::new(config.cols, config.rows);
-            let t_buffer = TripleBuffer::new(&device, config.cols, config.rows, config.cell_width, config.cell_height)?;
+
+            // Use BGRA8Unorm which is the standard format for macOS
+            let pixel_format = MTLPixelFormat::BGRA8Unorm;
+            let t_buffer = TripleBuffer::new(
+                &device,
+                config.cols,
+                config.rows,
+                config.cell_width,
+                config.cell_height,
+                pixel_format,
+            )?;
             let b = Blitter::new(config.cell_width, config.cell_height);
 
             (
@@ -228,6 +238,15 @@ impl MetalRenderer {
         let instances = self.build_instances(buffer)?;
 
         if !instances.is_empty() {
+            // Bounds check before unsafe operation
+            if instances.len() > self.max_instances {
+                return Err(format!(
+                    "Too many instances: {} > {}",
+                    instances.len(),
+                    self.max_instances
+                ));
+            }
+
             // Update instance buffer
             unsafe {
                 let ptr = self.instance_buffer.contents() as *mut GlyphInstance;
@@ -287,152 +306,38 @@ impl MetalRenderer {
         Ok(metrics)
     }
 
-    /// Render with incremental blitting (10-30x faster for typical usage)
+    /// Render with incremental blitting (EXPERIMENTAL - currently falls back to full render)
     ///
-    /// This method achieves extreme performance by:
-    /// 1. Tracking dirty (changed) regions
-    /// 2. Blitting unchanged regions from previous frame
-    /// 3. Only rendering dirty cells
-    /// 4. Using triple buffering to eliminate stalls
+    /// NOTE: This is a work-in-progress implementation. Currently it falls back
+    /// to full rendering for safety and correctness. The selective blitting
+    /// logic needs proper implementation and testing on actual macOS hardware.
     ///
-    /// # Performance
-    ///
-    /// Typical speedups:
-    /// - Idle (cursor blink): 31x faster
-    /// - Typing: 28x faster
-    /// - Scrolling: 11x faster
-    /// - Heavy output: 2x faster
+    /// TODO: Implement proper selective blitting:
+    /// 1. Fix render pass load action (use Load instead of Clear)
+    /// 2. Implement correct unchanged region blitting
+    /// 3. Proper triple buffer synchronization
+    /// 4. Integration with terminal change tracking
     ///
     /// # Arguments
     ///
     /// * `buffer` - Terminal buffer view
     /// * `drawable` - Metal drawable
-    /// * `dirty_cells` - Cells that changed since last frame
+    /// * `dirty_cells` - Cells that changed since last frame (currently unused)
     pub fn render_incremental(
         &self,
         buffer: &BufferView,
         drawable: &MetalDrawableRef,
-        dirty_cells: &[(u16, u16)],
+        _dirty_cells: &[(u16, u16)],
     ) -> Result<PerformanceMetrics, String> {
-        let frame_start = Instant::now();
-
-        // If incremental rendering is disabled, fall back to full render
-        if self.dirty_tracker.is_none() || self.triple_buffer.is_none() || self.blitter.is_none() {
-            return self.render(buffer, drawable);
-        }
-
-        // Mark dirty cells
-        {
-            let mut tracker = self.dirty_tracker.as_ref().unwrap().write();
-            for &(x, y) in dirty_cells {
-                tracker.mark_cell_dirty(x, y);
-            }
-        }
-
-        // Get dirty rects (optimized and merged)
-        let dirty_rects = {
-            let mut tracker = self.dirty_tracker.as_ref().unwrap().write();
-            tracker.get_dirty_rects()
-        };
-
-        // Calculate dirty percentage for metrics
-        let dirty_percentage = if dirty_rects.is_empty() {
-            0.0
-        } else {
-            let total_cells = (self.config.cols as f32) * (self.config.rows as f32);
-            let dirty_cells: u32 = dirty_rects.iter().map(|r| r.area()).sum();
-            (dirty_cells as f32 / total_cells) * 100.0
-        };
-
-        // Create command buffer
-        let command_buffer = self.command_queue.new_command_buffer();
-
-        // Get current and previous textures from triple buffer
-        let (current_texture, previous_texture) = {
-            let buffer_lock = self.triple_buffer.as_ref().unwrap().read();
-            (buffer_lock.current().clone(), buffer_lock.previous().clone())
-        };
-
-        // Blit unchanged regions from previous frame
-        if !dirty_rects.is_empty() && dirty_percentage < 100.0 {
-            let blit_encoder = command_buffer.new_blit_command_encoder();
-            self.blitter.as_ref().unwrap().blit_unchanged(
-                &blit_encoder,
-                &previous_texture,
-                drawable.texture(),
-                &dirty_rects,
-            );
-            blit_encoder.end_encoding();
-        }
-
-        // Render only dirty regions
-        if !dirty_rects.is_empty() {
-            let render_pass = self.create_render_pass_descriptor(drawable);
-            let encoder = command_buffer.new_render_command_encoder(&render_pass);
-            encoder.set_render_pipeline_state(self.pipeline.pipeline_state());
-
-            // Build instances only for dirty cells
-            let instances = self.build_instances_for_rects(buffer, &dirty_rects)?;
-
-            if !instances.is_empty() {
-                // Update instance buffer
-                unsafe {
-                    let ptr = self.instance_buffer.contents() as *mut GlyphInstance;
-                    std::ptr::copy_nonoverlapping(instances.as_ptr(), ptr, instances.len());
-                }
-
-                encoder.set_vertex_buffer(0, Some(&self.instance_buffer), 0);
-
-                let atlas_lock = self.atlas.read();
-                encoder.set_fragment_texture(0, Some(atlas_lock.texture()));
-
-                encoder.draw_primitives_instanced(
-                    MTLPrimitiveType::TriangleStrip,
-                    0,
-                    4,
-                    instances.len() as u64,
-                );
-            }
-
-            encoder.end_encoding();
-        }
-
-        // Present drawable
-        command_buffer.present_drawable(drawable);
-        command_buffer.commit();
-
-        if self.config.enable_profiling {
-            command_buffer.wait_until_completed();
-        }
-
-        // Swap triple buffer
-        {
-            let mut buffer_lock = self.triple_buffer.as_ref().unwrap().write();
-            buffer_lock.swap();
-        }
-
-        // Calculate metrics
-        let frame_time = frame_start.elapsed();
-        let metrics = PerformanceMetrics {
-            fps: 1000.0 / frame_time.as_millis() as f32,
-            frame_time_ms: frame_time.as_secs_f32() * 1000.0,
-            gpu_time_ms: 0.0,
-            cpu_time_ms: frame_time.as_secs_f32() * 1000.0,
-            draw_calls: if dirty_rects.is_empty() { 0 } else { 1 },
-            glyphs_rendered: dirty_rects.iter().map(|r| r.area()).sum(),
-            atlas_memory_mb: 0.0,
-        };
-
-        // Update stats
-        {
-            let mut stats = self.stats.write();
-            stats.frames_rendered += 1;
-            stats.total_glyphs += metrics.glyphs_rendered as u64;
-            stats.avg_frame_time_ms = (stats.avg_frame_time_ms * 0.9)
-                + (metrics.frame_time_ms * 0.1);
-        }
-
-        Ok(metrics)
+        // TEMPORARY: Fall back to full render until proper implementation
+        // This ensures correctness while we develop the full solution
+        //
+        // To implement properly, we need:
+        // - Terminal integration for change tracking
+        // - Proper selective blitting algorithm
+        // - Testing on actual macOS hardware
+        // - Performance validation
+        self.render(buffer, drawable)
     }
 
     /// Mark a row as dirty for scrolling optimization

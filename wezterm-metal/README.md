@@ -6,6 +6,21 @@ High-performance GPU-accelerated terminal renderer for macOS using Apple Metal.
 
 This renderer is designed to **wildly surpass Ghostty** and other terminal emulators in performance while maintaining excellent battery life on Apple Silicon.
 
+## ⚠️ Current Implementation Status
+
+**Compilation**: ✅ Fixed (as of latest commit)
+**Basic Rendering**: ⚠️ Untested (requires macOS hardware)
+**Incremental Rendering**: 🚧 Work in Progress (currently disabled)
+**Performance Claims**: 📊 Theoretical (not yet validated)
+
+**Known Issues**:
+- Bit blitting currently falls back to full rendering
+- Requires macOS hardware for testing
+- Integration with terminal change tracking needed
+- Performance validation required
+
+See [VALIDATION_ISSUES.md](VALIDATION_ISSUES.md) for detailed analysis.
+
 ### Performance Targets
 
 | Metric | Target | vs. Ghostty |
@@ -18,16 +33,17 @@ This renderer is designed to **wildly surpass Ghostty** and other terminal emula
 
 ## Key Features
 
-### 🚀 **Bit Blitting** (10-30x Performance Improvement)
+### 🚀 **Bit Blitting** (EXPERIMENTAL - Work In Progress)
 
-Revolutionary incremental rendering system that achieves extreme performance by only rendering changed screen regions:
+⚠️ **CURRENT STATUS**: The bit blitting system is currently in development and falls back to full rendering for safety and correctness.
 
-- **Idle (cursor blink)**: 310μs → 10μs = **31x faster**
-- **Typing**: 310μs → 11μs = **28x faster**
-- **Scrolling**: 310μs → 27μs = **11x faster**
-- **Heavy output**: 310μs → 155μs = **2x faster**
+**Planned Performance Targets** (requires further implementation):
+- **Idle (cursor blink)**: 310μs → 10μs = **31x faster** (theoretical)
+- **Typing**: 310μs → 11μs = **28x faster** (theoretical)
+- **Scrolling**: 310μs → 27μs = **11x faster** (theoretical)
+- **Heavy output**: 310μs → 155μs = **2x faster** (theoretical)
 
-**Weighted average for typical terminal usage: 26x faster!**
+**Note**: These are projected performance gains based on algorithm analysis. Actual implementation and validation on macOS hardware is required.
 
 #### How It Works
 
