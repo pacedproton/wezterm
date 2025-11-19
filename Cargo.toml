@@ -23,6 +23,7 @@ exclude = [
   "wezterm-char-props/codegen",
   "libvt",
   "libvt-node",
+  "wezterm-metal",
 ]
 
 [profile.release]

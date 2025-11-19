@@ -30,5 +30,13 @@ rand = "0.8"
 name = "rendering"
 harness = false
 
+[[example]]
+name = "debug_demo"
+required-features = []
+
+[[example]]
+name = "blit_demo"
+required-features = []
+
 [lib]
 crate-type = ["lib", "staticlib"]
