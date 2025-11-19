@@ -9,6 +9,7 @@ use crate::{
     input::{KeyCode, KeyModifiers, MouseEvent},
     markers::{DecorationType, Marker, MarkerId, MarkerManager},
     parser::{Action, Parser},
+    parser_ext::HandlerRegistry,
     screen::{Line, Position},
     selection::{Selection, SelectionMode},
 };
@@ -129,6 +130,12 @@ pub struct Terminal {
 
     /// Marker manager for line annotations
     markers: MarkerManager,
+
+    /// Parser extension handlers
+    handler_registry: HandlerRegistry,
+
+    /// Bracketed paste mode enabled
+    bracketed_paste: bool,
 }
 
 impl Terminal {
@@ -154,6 +161,8 @@ impl Terminal {
             working_directory: None,
             selection: None,
             markers: MarkerManager::new(),
+            handler_registry: HandlerRegistry::new(),
+            bracketed_paste: false,
         }
     }
 
@@ -481,6 +490,45 @@ impl Terminal {
     /// Clear all markers
     pub fn clear_markers(&mut self) {
         self.markers.clear();
+    }
+
+    // Parser extension API
+
+    /// Get mutable access to the handler registry
+    pub fn handler_registry_mut(&mut self) -> &mut HandlerRegistry {
+        &mut self.handler_registry
+    }
+
+    /// Get access to the handler registry
+    pub fn handler_registry(&self) -> &HandlerRegistry {
+        &self.handler_registry
+    }
+
+    // Bracketed paste mode
+
+    /// Check if bracketed paste mode is enabled
+    pub fn is_bracketed_paste_mode(&self) -> bool {
+        self.bracketed_paste
+    }
+
+    /// Enable or disable bracketed paste mode
+    pub fn set_bracketed_paste_mode(&mut self, enabled: bool) {
+        self.bracketed_paste = enabled;
+    }
+
+    /// Paste text with bracketed paste mode support
+    ///
+    /// If bracketed paste is enabled, wraps the text with escape sequences
+    pub fn paste(&mut self, text: &str) -> Vec<u8> {
+        if self.bracketed_paste {
+            // ESC [ 200 ~ (start) + text + ESC [ 201 ~ (end)
+            let mut result = b"\x1b[200~".to_vec();
+            result.extend_from_slice(text.as_bytes());
+            result.extend_from_slice(b"\x1b[201~");
+            result
+        } else {
+            text.as_bytes().to_vec()
+        }
     }
 
     /// Get terminal configuration
