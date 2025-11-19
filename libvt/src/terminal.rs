@@ -8,7 +8,8 @@ use crate::{
     events::{EventSubscriber, TerminalEvent},
     input::{KeyCode, KeyModifiers, MouseEvent},
     parser::{Action, Parser},
-    screen::{Line, Position, Selection},
+    screen::{Line, Position},
+    selection::{Selection, SelectionMode},
 };
 use std::collections::VecDeque;
 
@@ -389,10 +390,28 @@ impl Terminal {
         self.selection.as_ref()
     }
 
-    /// Set selection
+    /// Set selection with stream mode
     pub fn set_selection(&mut self, start: Position, end: Position) {
-        self.selection = Some(Selection { start, end });
+        self.selection = Some(Selection::new_stream(start, end));
         self.emit_event(TerminalEvent::SelectionChanged);
+    }
+
+    /// Set selection with specific mode
+    pub fn set_selection_with_mode(&mut self, start: Position, end: Position, mode: SelectionMode) {
+        self.selection = Some(match mode {
+            SelectionMode::Stream => Selection::new_stream(start, end),
+            SelectionMode::Block => Selection::new_block(start, end),
+            SelectionMode::Line => Selection::new_line(start, end),
+        });
+        self.emit_event(TerminalEvent::SelectionChanged);
+    }
+
+    /// Update selection end position (for dragging)
+    pub fn update_selection_end(&mut self, end: Position) {
+        if let Some(sel) = &mut self.selection {
+            sel.update_end(end);
+            self.emit_event(TerminalEvent::SelectionChanged);
+        }
     }
 
     /// Clear selection
@@ -405,7 +424,14 @@ impl Terminal {
     pub fn selected_text(&self) -> Option<String> {
         self.selection
             .as_ref()
-            .map(|sel| self.buffers.active().get_text_in_range(sel.start, sel.end))
+            .map(|sel| sel.get_text(self.buffers.active()))
+    }
+
+    /// Get selected text with trailing whitespace trimmed
+    pub fn selected_text_trimmed(&self) -> Option<String> {
+        self.selection
+            .as_ref()
+            .map(|sel| sel.get_text_trimmed(self.buffers.active()))
     }
 
     /// Get terminal configuration

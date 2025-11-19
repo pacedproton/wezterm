@@ -57,6 +57,7 @@ pub mod events;
 pub mod input;
 pub mod parser;
 pub mod screen;
+pub mod selection;
 pub mod terminal;
 
 pub use buffer_set::{BufferId, BufferSet};
@@ -66,7 +67,8 @@ pub use cursor::{Cursor, CursorShape, CursorVisibility};
 pub use error::{Error, Result};
 pub use events::{ClipboardType, EventSubscriber, TerminalEvent, TerminalMode};
 pub use input::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-pub use screen::{Line, Position, Screen, Selection};
+pub use screen::{Line, Position, Screen};
+pub use selection::{Selection, SelectionMode};
 pub use terminal::{Terminal, TerminalConfig, UnicodeVersion};
 
 /// Library version

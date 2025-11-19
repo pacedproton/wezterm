@@ -123,7 +123,6 @@ pub struct Screen {
     height: usize,
     title: String,
     working_directory: Option<String>,
-    selection: Option<Selection>,
 }
 
 impl Screen {
@@ -137,7 +136,6 @@ impl Screen {
             height,
             title: String::new(),
             working_directory: None,
-            selection: None,
         }
     }
 
@@ -254,21 +252,6 @@ impl Screen {
         self.working_directory = dir;
     }
 
-    /// Get selection
-    pub fn selection(&self) -> Option<&Selection> {
-        self.selection.as_ref()
-    }
-
-    /// Set selection
-    pub fn set_selection(&mut self, start: Position, end: Position) {
-        self.selection = Some(Selection { start, end });
-    }
-
-    /// Clear selection
-    pub fn clear_selection(&mut self) {
-        self.selection = None;
-    }
-
     /// Get text in a range
     pub fn get_text_in_range(&self, start: Position, end: Position) -> String {
         let mut result = String::new();
@@ -310,15 +293,6 @@ impl Screen {
         // This would need state tracking in a full implementation
         false
     }
-}
-
-/// Selection in terminal
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Selection {
-    /// Start position
-    pub start: Position,
-    /// End position
-    pub end: Position,
 }
 
 /// Position in terminal
@@ -392,16 +366,6 @@ mod tests {
         let pos = Position::new(10, 20);
         assert_eq!(pos.col, 10);
         assert_eq!(pos.row, 20);
-    }
-
-    #[test]
-    fn test_selection() {
-        let sel = Selection {
-            start: Position::new(0, 0),
-            end: Position::new(10, 5),
-        };
-        assert_eq!(sel.start.col, 0);
-        assert_eq!(sel.end.row, 5);
     }
 
     #[test]
