@@ -5,7 +5,7 @@ use super::keycodes::*;
 use super::{nsstring, nsstring_to_str};
 use crate::clipboard::Clipboard as ClipboardContext;
 use crate::connection::ConnectionOps;
-use crate::os::macos::menu::{MenuItem, RepresentedItem};
+use crate::os::macos::menu::{Menu, MenuItem, RepresentedItem};
 use crate::parameters::{Border, Parameters, TitleBar};
 use crate::{
     Clipboard, Connection, DeadKeyStatus, Dimensions, Handled, KeyCode, KeyEvent, Modifiers,
@@ -18,8 +18,8 @@ use async_trait::async_trait;
 use cocoa::appkit::{
     self, CGFloat, NSApplication, NSApplicationActivateIgnoringOtherApps,
     NSApplicationPresentationOptions, NSBackingStoreBuffered, NSEvent, NSEventModifierFlags,
-    NSOpenGLContext, NSOpenGLPixelFormat, NSPasteboard, NSRunningApplication, NSScreen, NSView,
-    NSViewHeightSizable, NSViewWidthSizable, NSWindow, NSWindowStyleMask,
+    NSMenu, NSMenuItem, NSOpenGLContext, NSOpenGLPixelFormat, NSPasteboard, NSRunningApplication,
+    NSScreen, NSView, NSViewHeightSizable, NSViewWidthSizable, NSWindow, NSWindowStyleMask,
 };
 use cocoa::base::*;
 use cocoa::foundation::{
@@ -2440,7 +2440,66 @@ impl WindowView {
         Self::mouse_common(this, nsevent, kind);
     }
 
+    /// Show context menu with split pane options
+    fn show_context_menu(view: id, nsevent: id) {
+        unsafe {
+            // Create context menu
+            let menu = Menu::new_with_title("Context Menu");
+
+            // Add "Split Horizontally" menu item
+            let split_h_item = MenuItem::new_with(
+                "Split Horizontally",
+                Some(sel!(weztermPerformKeyAssignment:)),
+                "",
+            );
+            split_h_item.set_represented_item(RepresentedItem::KeyAssignment(
+                config::keyassignment::KeyAssignment::SplitHorizontal(
+                    config::keyassignment::SpawnCommand {
+                        domain: config::keyassignment::SpawnTabDomain::CurrentPaneDomain,
+                        ..Default::default()
+                    },
+                ),
+            ));
+            split_h_item.set_target(view);
+            menu.add_item(&split_h_item);
+
+            // Add "Split Vertically" menu item
+            let split_v_item = MenuItem::new_with(
+                "Split Vertically",
+                Some(sel!(weztermPerformKeyAssignment:)),
+                "",
+            );
+            split_v_item.set_represented_item(RepresentedItem::KeyAssignment(
+                config::keyassignment::KeyAssignment::SplitVertical(
+                    config::keyassignment::SpawnCommand {
+                        domain: config::keyassignment::SpawnTabDomain::CurrentPaneDomain,
+                        ..Default::default()
+                    },
+                ),
+            ));
+            split_v_item.set_target(view);
+            menu.add_item(&split_v_item);
+
+            // Get the mouse location in window coordinates
+            let location = nsevent.locationInWindow();
+
+            // Show the menu
+            let ns_menu = menu.autorelease();
+            let () = msg_send![
+                ns_menu,
+                popUpMenuPositioningItem: nil
+                atLocation: location
+                inView: view
+            ];
+        }
+    }
+
     extern "C" fn right_mouse_down(this: &mut Object, _sel: Sel, nsevent: id) {
+        // Show context menu on right-click
+        let view = this as id;
+        Self::show_context_menu(view, nsevent);
+
+        // Also send the mouse event for compatibility
         Self::mouse_common(this, nsevent, MouseEventKind::Press(MousePress::Right));
     }
 
