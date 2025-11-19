@@ -884,11 +884,13 @@ impl Mux {
     }
 
     pub fn remove_pane(&self, pane_id: PaneId) {
+        log::debug!("remove_pane: removing pane_id={}", pane_id);
         self.remove_pane_internal(pane_id);
         self.prune_dead_windows();
     }
 
     pub fn remove_tab(&self, tab_id: TabId) -> Option<Arc<Tab>> {
+        log::debug!("remove_tab: removing tab_id={}", tab_id);
         let tab = self.remove_tab_internal(tab_id);
         self.prune_dead_windows();
         tab
@@ -982,8 +984,13 @@ impl Mux {
         workspace: Option<String>,
         position: Option<GuiPosition>,
     ) -> MuxWindowBuilder {
+        log::debug!(
+            "new_empty_window: creating window in workspace={:?}",
+            workspace.as_deref()
+        );
         let window = Window::new(workspace, position);
         let window_id = window.window_id();
+        log::debug!("new_empty_window: created window_id={}", window_id);
         self.windows.write().insert(window_id, window);
         MuxWindowBuilder {
             window_id,
@@ -994,6 +1001,11 @@ impl Mux {
 
     pub fn add_tab_to_window(&self, tab: &Arc<Tab>, window_id: WindowId) -> anyhow::Result<()> {
         let tab_id = tab.tab_id();
+        log::debug!(
+            "add_tab_to_window: adding tab_id={} to window_id={}",
+            tab_id,
+            window_id
+        );
         {
             let mut window = self
                 .get_window_mut(window_id)
