@@ -1,0 +1,33 @@
+[package]
+name = "wezterm-metal"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Metal renderer for WezTerm on macOS"
+license = "MIT"
+
+[dependencies]
+metal = "0.30"
+cocoa = "0.26"
+core-graphics-types = "0.2"
+objc2 = "0.6"
+objc2-metal = "0.3"
+objc2-foundation = "0.3"
+block2 = "0.6"
+libvt = { path = "../libvt" }
+parking_lot = "0.12"
+rayon = "1.10"
+crossbeam-channel = "0.5"
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+# ARM64 SIMD support
+packed_simd = "0.3"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "rendering"
+harness = false
+
+[lib]
+crate-type = ["lib", "staticlib"]
