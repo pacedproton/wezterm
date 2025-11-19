@@ -12,6 +12,9 @@
 #![warn(missing_docs)]
 
 pub mod atlas;
+pub mod debug;
+pub mod debug_overlay;
+pub mod memory_tracker;
 pub mod pipeline;
 pub mod renderer;
 pub mod shaders;
@@ -20,6 +23,9 @@ pub mod shaders;
 pub mod simd;
 
 pub use atlas::GlyphAtlas;
+pub use debug::{DebugConfig, PerformanceProfiler, ProfileStats, GpuDebugger};
+pub use debug_overlay::{DebugOverlay, FrameGraph, PerformanceAlerts};
+pub use memory_tracker::{MemoryTracker, MemoryBreakdown, AllocationType};
 pub use pipeline::RenderPipeline;
 pub use renderer::{MetalRenderer, RenderConfig, RenderStats};
 
