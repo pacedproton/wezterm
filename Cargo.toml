@@ -22,6 +22,7 @@ exclude = [
   "termwiz/codegen",
   "wezterm-char-props/codegen",
   "libvt",
+  "libvt-node",
 ]
 
 [profile.release]

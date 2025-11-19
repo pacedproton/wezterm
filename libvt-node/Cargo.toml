@@ -1,0 +1,21 @@
+[package]
+name = "libvt-node"
+version = "0.1.0"
+edition = "2021"
+description = "Node.js bindings for libvt terminal emulation library"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2.16", features = ["async", "napi8"] }
+napi-derive = "2.16"
+libvt = { path = "../libvt" }
+
+[build-dependencies]
+napi-build = "2.1"
+
+[profile.release]
+lto = true
+strip = true
