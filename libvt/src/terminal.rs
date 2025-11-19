@@ -1,6 +1,7 @@
 //! Terminal emulator core implementation
 
 use crate::{
+    buffer_api::BufferView,
     buffer_set::{BufferId, BufferSet},
     cell::Cell,
     color::ColorPalette,
@@ -295,6 +296,55 @@ impl Terminal {
     /// Clear dirty tracking
     pub fn clear_dirty(&mut self) {
         self.dirty_lines.fill(false);
+    }
+
+    /// Get a read-only view of the active buffer
+    ///
+    /// Returns a `BufferView` that provides zero-copy access to the terminal buffer,
+    /// matching xterm.js's IBuffer interface.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use libvt::Terminal;
+    ///
+    /// let mut term = libvt::create_terminal(80, 24);
+    /// term.write(b"Hello, World!");
+    ///
+    /// let buffer = term.get_buffer_view();
+    /// let (x, y) = (buffer.cursor_x(), buffer.cursor_y());
+    /// println!("Cursor at: ({}, {})", x, y);
+    /// ```
+    pub fn get_buffer_view(&self) -> BufferView {
+        BufferView::new(
+            self.buffers.active(),
+            self.cursor.col,
+            self.cursor.row,
+        )
+    }
+
+    /// Get a read-only view of the active buffer with scrollback information
+    ///
+    /// # Arguments
+    ///
+    /// * `base_y` - The base line offset in scrollback
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use libvt::Terminal;
+    ///
+    /// let mut term = libvt::create_terminal(80, 24);
+    /// let buffer = term.get_buffer_view_with_scrollback(100);
+    /// assert_eq!(buffer.base_y(), 100);
+    /// ```
+    pub fn get_buffer_view_with_scrollback(&self, base_y: u32) -> BufferView {
+        BufferView::with_scrollback(
+            self.buffers.active(),
+            self.cursor.col,
+            self.cursor.row,
+            base_y,
+        )
     }
 
     /// Mark a specific line as dirty

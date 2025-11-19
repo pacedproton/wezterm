@@ -48,6 +48,7 @@
 #![allow(clippy::struct_excessive_bools)]
 #![deny(unsafe_code)]
 
+pub mod buffer_api;
 pub mod buffer_set;
 pub mod cell;
 pub mod color;
@@ -62,6 +63,7 @@ pub mod screen;
 pub mod selection;
 pub mod terminal;
 
+pub use buffer_api::{BufferCellView, BufferLineView, BufferView};
 pub use buffer_set::{BufferId, BufferSet};
 pub use cell::{Cell, CellAttributes, Hyperlink, UnderlineStyle};
 pub use color::{ColorPalette, ColorSpec, RgbColor};
